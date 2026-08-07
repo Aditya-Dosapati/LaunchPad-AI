@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -16,6 +17,12 @@ export const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md'
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -32,7 +39,7 @@ export const Modal: React.FC<ModalProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const sizeClasses = {
     sm: 'max-w-md',
@@ -41,23 +48,23 @@ export const Modal: React.FC<ModalProps> = ({
     xl: 'max-w-5xl'
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
-      {/* Backdrop */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={title}>
+      {/* 100vw x 100vh Viewport Backdrop */}
       <div 
-        className="fixed inset-0 bg-slate-950/50 dark:bg-slate-950/80 backdrop-blur-xs transition-opacity animate-fade-in cursor-pointer" 
+        className="fixed inset-0 z-[9999] bg-black/40 dark:bg-black/60 backdrop-blur-md transition-opacity animate-fade-in cursor-pointer" 
         onClick={onClose} 
       />
 
       {/* Modal Container */}
-      <div className={`w-full ${sizeClasses[size]} z-10 glass-panel animate-slide-up flex flex-col max-h-[85vh] overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-800 shadow-2xl bg-white dark:bg-slate-950`}>
+      <div className={`relative z-[10000] w-full ${sizeClasses[size]} glass-panel animate-slide-up flex flex-col max-h-[85vh] overflow-hidden rounded-3xl border border-zinc-200/80 dark:border-zinc-800 shadow-2xl bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/30">
-          <h2 className="text-base font-extrabold text-slate-900 dark:text-slate-50 tracking-tight">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/40">
+          <h2 className="text-base font-extrabold text-zinc-900 dark:text-zinc-50 tracking-tight">{title}</h2>
           <button 
             onClick={onClose}
             aria-label="Close modal"
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
           >
             <X className="h-4 w-4" />
           </button>
@@ -68,6 +75,7 @@ export const Modal: React.FC<ModalProps> = ({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

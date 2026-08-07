@@ -147,6 +147,7 @@ interface AppContextType {
     department: string;
   } | null;
   setCurrentUser: (user: any) => void;
+  loginUser: (user: any, role: UserRole) => void;
   logout: () => void;
 }
 
@@ -451,7 +452,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
   const [role, setRole] = useState<UserRole>('employee');
-  const [route, setRoute] = useState<AppRoute>('dashboard');
+  const [route, setRoute] = useState<AppRoute>('auth');
   const [demoState, setDemoState] = useState<DemoState>('normal');
   const [placeholderModule, setPlaceholderModule] = useState<string>('');
   
@@ -470,14 +471,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeEmployeeDrawer, setActiveEmployeeDrawer] = useState<Employee | null>(null);
   const [activeDocPreview, setActiveDocPreview] = useState<Document | null>(null);
 
-  // Auth User state
-  const [currentUser, setCurrentUser] = useState<any>({
-    name: 'David Chen',
-    email: 'david.c@company.io',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-    skills: ['React', 'Next.js', 'TailwindCSS', 'TypeScript', 'Redux', 'Jest'],
-    department: 'Engineering'
-  });
+  // Auth User state (Unauthenticated null state by default)
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Restore session from localStorage on startup
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const savedSession = localStorage.getItem('launchpad_session');
+        if (savedSession) {
+          const parsed = JSON.parse(savedSession);
+          if (parsed?.user && parsed?.role) {
+            setCurrentUser(parsed.user);
+            setRole(parsed.role);
+            setRoute('dashboard');
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to restore auth session:', e);
+    }
+    setCurrentUser(null);
+    setRoute('auth');
+  }, []);
 
   // Sync state between currentUser role and app selected role for convenience
   useEffect(() => {
@@ -639,8 +656,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const loginUser = (user: any, userRole: UserRole) => {
+    setCurrentUser(user);
+    setRole(userRole);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('launchpad_session', JSON.stringify({ user, role: userRole }));
+      }
+    } catch (e) {
+      console.error('Failed to save session:', e);
+    }
+    setRoute('dashboard');
+  };
+
   const logout = () => {
     setCurrentUser(null);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('launchpad_session');
+      }
+    } catch (e) {
+      console.error('Failed to clear session:', e);
+    }
     setRoute('auth');
   };
 
@@ -694,6 +731,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         currentUser,
         setCurrentUser,
+        loginUser,
         logout
       }}
     >

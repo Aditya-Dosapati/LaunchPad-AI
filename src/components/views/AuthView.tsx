@@ -31,7 +31,7 @@ interface RoleOption {
 }
 
 export const AuthView: React.FC = () => {
-  const { setRoute, setCurrentUser, setRole } = useApp();
+  const { setRoute, loginUser } = useApp();
   const [step, setStep] = useState<'select-workspace' | 'login'>('select-workspace');
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [email, setEmail] = useState('david.c@company.io');
@@ -101,9 +101,7 @@ export const AuthView: React.FC = () => {
       return;
     }
 
-    setRole(selectedRole);
-
-    setCurrentUser({
+    const user = {
       name: activeRoleOption.defaultName,
       email: email,
       avatar: activeRoleOption.id === 'employee'
@@ -115,24 +113,29 @@ export const AuthView: React.FC = () => {
         : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
       skills: activeRoleOption.id === 'employee' ? ['React', 'Next.js', 'TypeScript'] : ['Strategy', 'Leadership'],
       department: activeRoleOption.id === 'hr' ? 'HR' : 'Engineering'
-    });
+    };
 
+    loginUser(user, selectedRole);
     setToastMsg(`Authenticated as ${activeRoleOption.name}`);
-    setRoute('dashboard');
   };
 
   const handleSSO = (provider: 'Google' | 'Microsoft') => {
     setToastMsg(`Connecting to ${provider} OAuth directory...`);
     setTimeout(() => {
-      setRole(selectedRole);
-      setCurrentUser({
+      const user = {
         name: activeRoleOption.defaultName,
         email: email,
-        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+        avatar: activeRoleOption.id === 'employee'
+          ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
+          : activeRoleOption.id === 'manager'
+          ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
+          : activeRoleOption.id === 'hr'
+          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
+          : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
         skills: ['Cloud Architecture', 'Security'],
         department: 'Platform'
-      });
-      setRoute('dashboard');
+      };
+      loginUser(user, selectedRole);
     }, 1000);
   };
 

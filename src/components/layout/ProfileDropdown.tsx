@@ -9,10 +9,9 @@ import {
   Bell, 
   Sun, 
   HelpCircle, 
-  LogOut, 
-  AlertTriangle 
+  LogOut
 } from 'lucide-react';
-import { Modal } from '../ui/Modal';
+import { SignOutModal } from './SignOutModal';
 
 interface ProfileDropdownProps {
   isOpen: boolean;
@@ -29,7 +28,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
   className,
   triggerRef
 }) => {
-  const { setRoute, role, currentUser } = useApp();
+  const { setRoute, role, currentUser, logout } = useApp();
   const menuRef = useRef<HTMLDivElement>(null);
   const [isSignOutModalOpen, setIsSignOutModalOpen] = useState(false);
 
@@ -79,7 +78,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
   const handleConfirmSignOut = () => {
     setIsSignOutModalOpen(false);
     onClose();
-    setRoute('auth');
+    logout();
   };
 
   return (
@@ -157,7 +156,7 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
             </button>
           </div>
 
-          {/* Divider & Sign Out */}
+          {/* Divider & Sign Out Trigger */}
           <div className="pt-1 border-t border-zinc-100 dark:border-zinc-900/60">
             <button
               onClick={() => setIsSignOutModalOpen(true)}
@@ -171,35 +170,11 @@ export const ProfileDropdown: React.FC<ProfileDropdownProps> = ({
       )}
 
       {/* Sign Out Confirmation Modal */}
-      {isSignOutModalOpen && (
-        <Modal
-          isOpen={isSignOutModalOpen}
-          onClose={() => setIsSignOutModalOpen(false)}
-          title="Confirm Sign Out"
-        >
-          <div className="space-y-4 text-left">
-            <div className="flex items-center gap-3 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold">
-              <AlertTriangle size={18} className="shrink-0" />
-              <span>Are you sure you want to sign out of LaunchPad AI? You will need to sign in again to access your workspace.</span>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                onClick={() => setIsSignOutModalOpen(false)}
-                className="px-4 py-2 border border-zinc-200 dark:border-zinc-800 text-xs font-bold rounded-xl text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmSignOut}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-xs font-bold rounded-xl text-white shadow-2xs transition-colors cursor-pointer"
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
+      <SignOutModal
+        isOpen={isSignOutModalOpen}
+        onClose={() => setIsSignOutModalOpen(false)}
+        onConfirm={handleConfirmSignOut}
+      />
     </>
   );
 };

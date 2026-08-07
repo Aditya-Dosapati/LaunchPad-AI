@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface DrawerProps {
@@ -14,6 +15,12 @@ export const Drawer: React.FC<DrawerProps> = ({
   title,
   children
 }) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -30,27 +37,27 @@ export const Drawer: React.FC<DrawerProps> = ({
     };
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden" role="dialog" aria-modal="true" aria-label={title}>
-      {/* Backdrop */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-hidden" role="dialog" aria-modal="true" aria-label={title}>
+      {/* Viewport Backdrop */}
       <div 
-        className="absolute inset-0 bg-slate-950/30 dark:bg-slate-950/60 backdrop-blur-xs transition-opacity animate-fade-in cursor-pointer" 
+        className="fixed inset-0 z-[9999] bg-black/40 dark:bg-black/60 backdrop-blur-md transition-opacity animate-fade-in cursor-pointer" 
         onClick={onClose} 
       />
 
       {/* Drawer Panel */}
-      <div className="absolute inset-y-0 right-0 flex max-w-full pl-10">
-        <div className="w-screen max-w-md transform glass-panel animate-slide-in-right border-l border-slate-200/50 dark:border-slate-800/80 shadow-2xl flex flex-col h-full bg-white dark:bg-slate-950">
+      <div className="fixed inset-y-0 right-0 z-[10000] flex max-w-full pl-10">
+        <div className="w-screen max-w-md transform glass-panel animate-slide-in-right border-l border-zinc-200/50 dark:border-zinc-800/80 shadow-2xl flex flex-col h-full bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100">
           
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 dark:border-slate-800/50">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{title}</h2>
+          <div className="flex items-center justify-between px-6 py-5 border-b border-zinc-100 dark:border-zinc-800/50">
+            <h2 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">{title}</h2>
             <button 
               onClick={onClose}
               aria-label="Close drawer"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>
@@ -62,6 +69,7 @@ export const Drawer: React.FC<DrawerProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
