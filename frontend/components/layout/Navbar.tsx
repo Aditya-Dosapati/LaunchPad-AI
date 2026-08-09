@@ -35,10 +35,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onSelectSettingsTab }) => {
     role, 
     setRoute, 
     currentUser,
-    setSearchChats
+    setSearchChats,
+    theme,
+    toggleTheme
   } = useApp();
 
-  const [isDark, setIsDark] = useState(true);
   const [isCommandKOpen, setIsCommandKOpen] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -100,13 +101,6 @@ export const Navbar: React.FC<NavbarProps> = ({ onSelectSettingsTab }) => {
     }
     return () => document.removeEventListener('mousedown', handleNotifClickOutside);
   }, [isNotifOpen]);
-
-  const toggleTheme = () => {
-    setIsDark(!isDark);
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.toggle('dark');
-    }
-  };
 
   const toggleProfile = () => {
     setIsProfileOpen(prev => !prev);
@@ -192,11 +186,11 @@ export const Navbar: React.FC<NavbarProps> = ({ onSelectSettingsTab }) => {
         {/* Dark/Light Mode Toggle */}
         <button
           onClick={toggleTheme}
-          aria-label={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+          aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
           className="p-2 rounded-xl bg-white dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors shadow-2xs cursor-pointer"
-          title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
         >
-          {isDark ? <Sun size={15} /> : <Moon size={15} />}
+          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
         </button>
 
         {/* Notifications Trigger & Popover Drawer */}

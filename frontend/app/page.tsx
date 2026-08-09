@@ -40,7 +40,7 @@ export default function Home() {
 
   if (!mounted) {
     return (
-      <div className="h-screen w-screen bg-slate-950 flex items-center justify-center text-slate-400 font-bold text-xs">
+      <div className="h-screen w-screen bg-zinc-50 dark:bg-slate-950 flex items-center justify-center text-zinc-400 dark:text-slate-400 font-bold text-xs">
         Initializing LaunchPad AI Intelligence Engine...
       </div>
     );
@@ -82,7 +82,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen relative flex bg-slate-50 dark:bg-slate-950 transition-colors duration-300 light-bg-mesh dark:dark-bg-mesh">
+    <div className="min-h-screen relative flex bg-slate-50 dark:bg-slate-950 light-bg-mesh dark:dark-bg-mesh">
       {/* 1. Left Sidebar (Pure Navigation) */}
       <Sidebar
         collapsed={sidebarCollapsed}
