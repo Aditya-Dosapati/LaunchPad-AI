@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --background: 240 10% 98%;
@@ -141,6 +143,14 @@
 
 .animate-float {
   animation: floatSubtle 4s ease-in-out infinite;
+}
+
+/* Suppress all CSS transitions during instant theme switch to prevent flicker */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after {
+  transition: none !important;
+  animation-duration: 0.01ms !important;
 }
 
 /* Container Constraint */

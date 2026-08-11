@@ -34,7 +34,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'account' }) => {
-  const { role, currentUser } = useApp();
+  const { role, currentUser, themeMode, setThemeMode } = useApp();
   const [activeTab, setActiveTab] = useState<string>(initialTab);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
@@ -56,8 +56,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'accoun
   const [notifLearningReminders, setNotifLearningReminders] = useState(true);
   const [notifSecurityAlerts, setNotifSecurityAlerts] = useState(true);
 
-  // Appearance State
-  const [themePreference, setThemePreference] = useState<'Dark' | 'Light' | 'System'>('Dark');
+  // Appearance State — sidebar/density/animations remain local UI state
   const [sidebarDefault, setSidebarDefault] = useState<'Expanded' | 'Collapsed'>('Expanded');
   const [interfaceDensity, setInterfaceDensity] = useState<'Comfortable' | 'Compact'>('Comfortable');
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
@@ -394,20 +393,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ initialTab = 'accoun
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">Color Theme</label>
                   <div className="grid grid-cols-3 gap-3">
-                    {['Dark', 'Light', 'System'].map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setThemePreference(mode as any)}
-                        className={`p-3 rounded-xl border text-xs font-bold text-center cursor-pointer transition-all ${
-                          themePreference === mode 
-                            ? 'bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400' 
-                            : 'bg-white dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400'
-                        }`}
-                      >
-                        {mode} Mode
-                      </button>
-                    ))}
+                    {(['Dark', 'Light', 'System'] as const).map((mode) => {
+                      const modeKey = mode.toLowerCase() as 'dark' | 'light' | 'system';
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setThemeMode(modeKey)}
+                          className={`p-3 rounded-xl border text-xs font-bold text-center cursor-pointer transition-all ${
+                            themeMode === modeKey
+                              ? 'bg-indigo-500/10 border-indigo-500 text-indigo-600 dark:text-indigo-400' 
+                              : 'bg-white dark:bg-zinc-900 border-zinc-200/50 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400'
+                          }`}
+                        >
+                          {mode} Mode
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

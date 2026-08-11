@@ -92,6 +92,8 @@ export interface SystemNotification {
 
 interface AppContextType {
   theme: 'light' | 'dark';
+  themeMode: 'light' | 'dark' | 'system';
+  setThemeMode: (mode: 'light' | 'dark' | 'system') => void;
   toggleTheme: () => void;
   role: UserRole;
   setRole: (role: UserRole) => void;
@@ -450,7 +452,12 @@ const initialChats: ChatSession[] = [
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Always initialize to 'dark' — consistent between server and client.
+  // The inline script in layout.tsx applies the correct class before first paint (no flash).
+  // After mount, we read localStorage and sync the React state to match the DOM.
   const [theme, setTheme] = useState<'light' | 'dark'>('dark');
+  // themeMode is the user's stored preference: 'dark' | 'light' | 'system'
+  const [themeMode, setThemeModeState] = useState<'light' | 'dark' | 'system'>('dark');
   const [role, setRole] = useState<UserRole>('employee');
   const [route, setRoute] = useState<AppRoute>('auth');
   const [demoState, setDemoState] = useState<DemoState>('normal');
@@ -507,10 +514,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [role]);
 
-  const toggleTheme = () => {
-    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+  // Resolve a themeMode to an actual 'light' | 'dark' value
+  const resolveTheme = (mode: 'light' | 'dark' | 'system'): 'light' | 'dark' => {
+    if (mode === 'system') {
+      if (typeof window !== 'undefined') {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      return 'dark';
+    }
+    return mode;
   };
 
+  // setThemeMode: the single setter used by both Settings and Navbar toggle.
+  // Applies the DOM class synchronously (no useEffect hop) to eliminate flicker.
+  const setThemeMode = (mode: 'light' | 'dark' | 'system') => {
+    const resolved = resolveTheme(mode);
+    // Update DOM immediately — no async useEffect delay
+    const root = window.document.documentElement;
+    // Suppress CSS transitions for the instant swap, restore on next frame
+    root.setAttribute('data-theme-switching', '');
+    if (resolved === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    requestAnimationFrame(() => root.removeAttribute('data-theme-switching'));
+    // Batch both state updates together (React 18 auto-batching handles this)
+    setThemeModeState(mode);
+    setTheme(resolved);
+    try {
+      localStorage.setItem('launchpad_theme_mode', mode);
+    } catch (e) { /* ignore */ }
+  };
+
+  // Navbar toggle: cycles dark ↔ light (leaves system mode if currently in it)
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setThemeMode(next);
+  };
+
+  // On first mount: read persisted mode from localStorage and sync React state + DOM
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem('launchpad_theme_mode') as 'light' | 'dark' | 'system' | null;
+      const mode: 'light' | 'dark' | 'system' =
+        savedMode === 'light' || savedMode === 'dark' || savedMode === 'system'
+          ? savedMode
+          : 'dark';
+      // Use setThemeMode so the DOM class and React state update together
+      setThemeMode(mode);
+    } catch (e) { /* stay with default */ }
+  }, []); // runs once after mount, client-only
+
+  // Listen for OS-level color scheme changes when in System mode
+  useEffect(() => {
+    if (themeMode !== 'system' || typeof window === 'undefined') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent) => {
+      setTheme(e.matches ? 'dark' : 'light');
+      const root = window.document.documentElement;
+      if (e.matches) root.classList.add('dark');
+      else root.classList.remove('dark');
+    };
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [themeMode]);
+
+  // Apply dark class to <html> whenever resolved theme changes.
+  // This covers the system-mode OS handler path above (setTheme-only updates).
   useEffect(() => {
     const root = window.document.documentElement;
     if (theme === 'dark') {
@@ -685,6 +756,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider
       value={{
         theme,
+        themeMode,
+        setThemeMode,
         toggleTheme,
         role,
         setRole,

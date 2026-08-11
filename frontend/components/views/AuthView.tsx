@@ -14,7 +14,9 @@ import {
   Settings, 
   Check, 
   ShieldCheck, 
-  Globe
+  Globe,
+  Moon,
+  Sun
 } from 'lucide-react';
 import { Toast } from '../ui/Toast';
 
@@ -31,7 +33,7 @@ interface RoleOption {
 }
 
 export const AuthView: React.FC = () => {
-  const { setRoute, loginUser } = useApp();
+  const { setRoute, loginUser, theme, toggleTheme } = useApp();
   const [step, setStep] = useState<'select-workspace' | 'login'>('select-workspace');
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [email, setEmail] = useState('david.c@company.io');
@@ -162,6 +164,16 @@ export const AuthView: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center relative p-4 md:p-8 overflow-y-auto bg-zinc-50 dark:bg-[#060814] transition-colors duration-300">
+      
+      {/* Theme toggle — fixed top-right, uses the same shared theme state */}
+      <button
+        onClick={toggleTheme}
+        aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+        title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+        className="fixed top-4 right-4 z-50 p-2 rounded-xl bg-white dark:bg-zinc-900/60 border border-zinc-200/50 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-100 transition-colors shadow-2xs cursor-pointer"
+      >
+        {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+      </button>
       
       {/* Background ambient light */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 h-[500px] w-[600px] rounded-full bg-indigo-500/8 dark:bg-indigo-500/4 blur-[130px] pointer-events-none" />
