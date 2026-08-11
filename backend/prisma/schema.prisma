@@ -1,0 +1,370 @@
+// LaunchPad AI — Prisma Schema
+// PostgreSQL + Prisma ORM
+// Run: npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum UserRole {
+  EMPLOYEE
+  MANAGER
+  HR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  ONBOARDING
+  ON_LEAVE
+  SUSPENDED
+}
+
+enum Department {
+  ENGINEERING
+  PRODUCT
+  MARKETING
+  HR
+  SALES
+  OPERATIONS
+}
+
+enum DocumentCategory {
+  SOP
+  FAQ
+  API_DOCS
+  ARCHITECTURE
+  CODING_STANDARDS
+  DEPLOYMENT
+  GENERAL
+}
+
+enum DocumentStatus {
+  APPROVED
+  PENDING_REVIEW
+  DRAFT
+}
+
+enum NotificationType {
+  QUESTION
+  DOCUMENT
+  REMINDER
+  ANNOUNCEMENT
+  FEEDBACK
+}
+
+enum ChatMessageSender {
+  USER
+  AI
+}
+
+enum KTSessionStatus {
+  UPCOMING
+  COMPLETED
+  CANCELLED
+}
+
+enum FeedbackSentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum FeedbackType {
+  PUBLIC
+  ANONYMOUS
+  SUGGESTION
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  QUERY
+  APPROVE
+  EXPORT
+  REINDEX
+}
+
+enum DocCompletionStatus {
+  COMPLETE
+  DRAFT
+  MISSING
+}
+
+// ─────────────────────────────────────────────
+// USERS
+// Core identity — links to all other entities
+// ─────────────────────────────────────────────
+
+model User {
+  id           String      @id @default(uuid()) @db.Uuid
+  email        String      @unique
+  name         String
+  passwordHash String? // nullable for SSO-only accounts
+  role         UserRole    @default(EMPLOYEE)
+  status       UserStatus  @default(ACTIVE)
+  avatarUrl    String?
+  department   Department?
+  jobTitle     String?
+  bio          String?
+  phone        String?
+  location     String?
+  skills       String[] // array of skill tags
+  employeeId   String?     @unique // e.g. EMP-00482
+  mfaEnabled   Boolean     @default(false)
+  joinedAt     DateTime    @default(now())
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relations
+  documents        Document[]
+  notifications    Notification[]
+  chatSessions     ChatSession[]
+  auditLogs        AuditLog[]
+  ktSessionsHosted KTSession[]      @relation("KTHost")
+  ktAttendances    KTAttendance[]
+  mentorPairings   MentorPairing[]  @relation("Mentor")
+  menteePairings   MentorPairing[]  @relation("Mentee")
+  feedbackEntries  FeedbackEntry[]
+  onboardingTrack  OnboardingTrack?
+  projectsLed      Project[]        @relation("ProjectLead")
+  projectMembers   ProjectMember[]
+
+  @@index([email])
+  @@index([role])
+  @@index([status])
+  @@index([department])
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTS (Knowledge Base)
+// ─────────────────────────────────────────────
+
+model Document {
+  id           String           @id @default(uuid()) @db.Uuid
+  title        String
+  category     DocumentCategory
+  content      String           @db.Text
+  version      String           @default("v1.0")
+  status       DocumentStatus   @default(DRAFT)
+  isBookmarked Boolean          @default(false)
+  isFavorite   Boolean          @default(false)
+  authorId     String           @db.Uuid
+  author       User             @relation(fields: [authorId], references: [id])
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([category])
+  @@index([status])
+  @@index([authorId])
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String           @db.Text
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// AI CHAT SESSIONS & MESSAGES
+// ─────────────────────────────────────────────
+
+model ChatSession {
+  id        String        @id @default(uuid()) @db.Uuid
+  title     String        @default("New Discussion")
+  userId    String        @db.Uuid
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  ChatMessage[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id          String            @id @default(uuid()) @db.Uuid
+  sessionId   String            @db.Uuid
+  session     ChatSession       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender      ChatMessageSender
+  text        String            @db.Text
+  codeSnippet String?           @db.Text
+  language    String?
+  sources     String[] // array of source references
+  confidence  Int? // 0–100
+  feedback    String? // 'up' | 'down' | null
+  createdAt   DateTime          @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+// ─────────────────────────────────────────────
+// KT SESSIONS (Knowledge Transfer / Learning)
+// ─────────────────────────────────────────────
+
+model KTSession {
+  id          String          @id @default(uuid()) @db.Uuid
+  title       String
+  hostId      String          @db.Uuid
+  host        User            @relation("KTHost", fields: [hostId], references: [id])
+  status      KTSessionStatus @default(UPCOMING)
+  scheduledAt DateTime
+  rating      Float? // avg rating after completion
+  attendances KTAttendance[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([hostId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model KTAttendance {
+  id        String    @id @default(uuid()) @db.Uuid
+  sessionId String    @db.Uuid
+  session   KTSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id])
+  attended  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  @@unique([sessionId, userId])
+}
+
+// ─────────────────────────────────────────────
+// MENTOR PAIRINGS (Learning Hub)
+// ─────────────────────────────────────────────
+
+model MentorPairing {
+  id        String   @id @default(uuid()) @db.Uuid
+  mentorId  String   @db.Uuid
+  mentor    User     @relation("Mentor", fields: [mentorId], references: [id])
+  menteeId  String   @db.Uuid
+  mentee    User     @relation("Mentee", fields: [menteeId], references: [id])
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([mentorId, menteeId])
+  @@index([mentorId])
+  @@index([menteeId])
+}
+
+// ─────────────────────────────────────────────
+// PROJECTS (Project Tracker & Doc Health)
+// ─────────────────────────────────────────────
+
+model Project {
+  id              String              @id @default(uuid()) @db.Uuid
+  name            String
+  description     String              @db.Text
+  progress        Int                 @default(0) // 0–100 %
+  health          Int                 @default(0) // 0–100 doc-health score
+  leadId          String              @db.Uuid
+  lead            User                @relation("ProjectLead", fields: [leadId], references: [id])
+  techStack       String[] // e.g. ["Next.js", "TypeScript"]
+  docArchitecture DocCompletionStatus @default(MISSING)
+  docSop          DocCompletionStatus @default(MISSING)
+  docApi          DocCompletionStatus @default(MISSING)
+  members         ProjectMember[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([leadId])
+  @@index([health])
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────
+// ONBOARDING TRACKS (HR Pipeline)
+// ─────────────────────────────────────────────
+
+model OnboardingTrack {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @unique @db.Uuid
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progress           Int       @default(0) // 0–100 %
+  trainingCompletion Int       @default(0) // 0–100 %
+  readinessScore     Int       @default(0) // 0–100
+  pendingKT          String?
+  pendingDoc         String?
+  assignedMentorName String?
+  completedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────
+// FEEDBACK ENTRIES (Help Center)
+// ─────────────────────────────────────────────
+
+model FeedbackEntry {
+  id        String            @id @default(uuid()) @db.Uuid
+  text      String            @db.Text
+  authorId  String?           @db.Uuid
+  author    User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  type      FeedbackType      @default(PUBLIC)
+  sentiment FeedbackSentiment @default(NEUTRAL)
+  createdAt DateTime          @default(now())
+
+  @@index([type])
+  @@index([sentiment])
+  @@index([authorId])
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOGS (Security Console)
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String?     @db.Uuid
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    AuditAction
+  entity    String? // e.g. "Document", "User"
+  entityId  String?
+  details   String?     @db.Text
+  ipAddress String?
+  createdAt DateTime    @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([entity, entityId])
+}
