@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 
 export const ProfileView: React.FC = () => {
-  const { currentUser, role, setRoute } = useApp();
+  const { currentUser, setCurrentUser, role, setRoute } = useApp();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isBadgeModalOpen, setIsBadgeModalOpen] = useState(false);
@@ -47,8 +47,17 @@ export const ProfileView: React.FC = () => {
   const [editTitle, setEditTitle] = useState(jobTitle);
   const [editBio, setEditBio] = useState('Senior Full Stack Architect specializing in RAG vector search pipelines, Next.js micro-frontends, and enterprise AI onboarding integrations.');
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (currentUser?.id) {
+      try {
+        const { usersApi } = await import('../../lib/api');
+        await usersApi.update(currentUser.id, { name: editName, jobTitle: editTitle, bio: editBio });
+        setCurrentUser({ ...currentUser, name: editName, jobTitle: editTitle, bio: editBio });
+      } catch (err) {
+        console.error('Failed to update profile:', err);
+      }
+    }
     setIsEditModalOpen(false);
     setToastMsg('Profile information updated successfully.');
   };

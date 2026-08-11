@@ -16,7 +16,8 @@ import {
   ShieldCheck, 
   Globe,
   Moon,
-  Sun
+  Sun,
+  Loader2
 } from 'lucide-react';
 import { Toast } from '../ui/Toast';
 
@@ -33,13 +34,14 @@ interface RoleOption {
 }
 
 export const AuthView: React.FC = () => {
-  const { setRoute, loginUser, theme, toggleTheme } = useApp();
+  const { loginUser, theme, toggleTheme, authLoading, authError } = useApp();
   const [step, setStep] = useState<'select-workspace' | 'login'>('select-workspace');
   const [selectedRole, setSelectedRole] = useState<UserRole>('employee');
   const [email, setEmail] = useState('david.c@company.io');
-  const [password, setPassword] = useState('••••••••');
+  const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const roleOptions: RoleOption[] = [
     {
@@ -93,32 +95,24 @@ export const AuthView: React.FC = () => {
   const handleWorkspaceSelect = (roleOpt: RoleOption) => {
     setSelectedRole(roleOpt.id);
     setEmail(roleOpt.defaultEmail);
+    setLoginError(null);
     setStep('login');
   };
 
-  const handleSignIn = (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
-      setToastMsg('Please enter valid credentials.');
+      setLoginError('Please enter valid credentials.');
       return;
     }
 
-    const user = {
-      name: activeRoleOption.defaultName,
-      email: email,
-      avatar: activeRoleOption.id === 'employee'
-        ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
-        : activeRoleOption.id === 'manager'
-        ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
-        : activeRoleOption.id === 'hr'
-        ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-        : 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-      skills: activeRoleOption.id === 'employee' ? ['React', 'Next.js', 'TypeScript'] : ['Strategy', 'Leadership'],
-      department: activeRoleOption.id === 'hr' ? 'HR' : 'Engineering'
-    };
-
-    loginUser(user, selectedRole);
-    setToastMsg(`Authenticated as ${activeRoleOption.name}`);
+    setLoginError(null);
+    try {
+      await loginUser(email, password);
+      setToastMsg(`Authenticated as ${activeRoleOption.name}`);
+    } catch (err: any) {
+      setLoginError(err?.message || 'Invalid email or password');
+    }
   };
 
   const handleSSO = (provider: 'Google' | 'Microsoft') => {
@@ -255,7 +249,7 @@ export const AuthView: React.FC = () => {
           
           {/* Back button */}
           <button
-            onClick={() => setStep('select-workspace')}
+            onClick={() => { setStep('select-workspace'); setLoginError(null); }}
             className="flex items-center gap-2 text-xs font-bold text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors cursor-pointer"
           >
             <ArrowLeft size={14} />
@@ -286,6 +280,13 @@ export const AuthView: React.FC = () => {
               </div>
             </div>
 
+            {/* Error message */}
+            {(loginError || authError) && (
+              <div className="px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400">
+                {loginError || authError}
+              </div>
+            )}
+
             <form onSubmit={handleSignIn} className="space-y-4">
               {/* Email Field */}
               <div className="space-y-1.5">
@@ -313,10 +314,11 @@ export const AuthView: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="Enter your password"
                     className="w-full text-xs font-semibold pl-10 pr-4 py-2.5 bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200/60 dark:border-zinc-800 focus:border-indigo-500/40 rounded-xl outline-none text-zinc-800 dark:text-zinc-200 transition-all shadow-xs"
                   />
                 </div>
+                <p className="text-[9px] text-zinc-400 font-medium mt-1">Demo password: LaunchPad@2026</p>
               </div>
 
               {/* Remember Me & Forgot Password */}
@@ -343,10 +345,20 @@ export const AuthView: React.FC = () => {
               {/* Login Button */}
               <button
                 type="submit"
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold text-white bg-indigo-650 hover:bg-indigo-600 transition-transform active:scale-98 shadow-md cursor-pointer mt-2"
+                disabled={authLoading}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold text-white bg-indigo-650 hover:bg-indigo-600 transition-transform active:scale-98 shadow-md cursor-pointer mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Log In to {activeRoleOption.badgeLabel} Workspace
-                <ArrowRight size={14} />
+                {authLoading ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    Authenticating...
+                  </>
+                ) : (
+                  <>
+                    Log In to {activeRoleOption.badgeLabel} Workspace
+                    <ArrowRight size={14} />
+                  </>
+                )}
               </button>
             </form>
 

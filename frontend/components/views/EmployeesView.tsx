@@ -30,13 +30,13 @@ interface AdminUserRow {
 }
 
 export const EmployeesView: React.FC = () => {
-  const { demoState, setDemoState, role } = useApp();
+  const { demoState, setDemoState, role, employees, dataLoading } = useApp();
   const [searchVal, setSearchVal] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [activeDrawer, setActiveDrawer] = useState<AdminUserRow | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  if (demoState === 'loading') {
+  if (demoState === 'loading' || dataLoading) {
     return <TableSkeleton rows={5} />;
   }
 
@@ -44,58 +44,25 @@ export const EmployeesView: React.FC = () => {
     return <ErrorState onRetry={() => setDemoState('normal')} />;
   }
 
-  const adminUsers: AdminUserRow[] = [
-    {
-      id: 'usr-1',
-      name: 'Elena Rostova',
-      email: 'elena.r@company.io',
-      role: 'Admin',
-      permissions: ['Full Platform Access', 'LLM Provider Config', 'RBAC Management'],
-      status: 'Active',
-      mfaEnabled: true,
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150'
-    },
-    {
-      id: 'usr-2',
-      name: 'Sarah Connor',
-      email: 'sarah.c@company.io',
-      role: 'Manager',
-      permissions: ['Team Analytics', 'SOP Approval', 'Mentor Assignment'],
-      status: 'Active',
-      mfaEnabled: true,
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150'
-    },
-    {
-      id: 'usr-3',
-      name: 'Emma Watson',
-      email: 'emma.w@company.io',
-      role: 'HR',
-      permissions: ['Onboarding Pipeline', 'Talent Analytics', 'Policy Publishing'],
-      status: 'Active',
-      mfaEnabled: true,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150'
-    },
-    {
-      id: 'usr-4',
-      name: 'David Chen',
-      email: 'david.c@company.io',
-      role: 'Employee',
-      permissions: ['Copilot Search', 'Learning Hub', 'Document View'],
-      status: 'Active',
-      mfaEnabled: true,
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150'
-    },
-    {
-      id: 'usr-5',
-      name: 'Alex Mercer',
-      email: 'alex.m@company.io',
-      role: 'Employee',
-      permissions: ['Copilot Search', 'Learning Hub'],
-      status: 'Active',
-      mfaEnabled: false,
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150'
+  const getPermissionsForRole = (r: string): string[] => {
+    switch (r) {
+      case 'admin': return ['Full Platform Access', 'LLM Provider Config', 'RBAC Management'];
+      case 'hr': return ['Onboarding Pipeline', 'Talent Analytics', 'Policy Publishing'];
+      case 'manager': return ['Team Analytics', 'SOP Approval', 'Mentor Assignment'];
+      default: return ['Copilot Search', 'Learning Hub', 'Document View'];
     }
-  ];
+  };
+
+  const adminUsers: AdminUserRow[] = employees.map(emp => ({
+    id: emp.id,
+    name: emp.name,
+    email: emp.email,
+    role: (emp.role.charAt(0).toUpperCase() + emp.role.slice(1)) as AdminUserRow['role'],
+    permissions: getPermissionsForRole(emp.role),
+    status: emp.status === 'Active' ? 'Active' : emp.status === 'Suspended' ? 'Suspended' : 'Active',
+    mfaEnabled: emp.role === 'admin' || emp.role === 'manager' || emp.role === 'hr',
+    avatar: emp.avatar,
+  }));
 
   const roleOptions = ['All', 'Employee', 'Manager', 'HR', 'Admin'];
 

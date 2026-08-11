@@ -22,10 +22,10 @@ import {
 import { CopilotInsightCard } from '../ui/CopilotWidgets';
 
 export const LearningView: React.FC = () => {
-  const { demoState, setDemoState, role } = useApp();
+  const { demoState, setDemoState, role, ktSessions, mentorPairings, dataLoading } = useApp();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  if (demoState === 'loading') {
+  if (demoState === 'loading' || dataLoading) {
     return <TableSkeleton rows={4} />;
   }
 
@@ -33,20 +33,31 @@ export const LearningView: React.FC = () => {
     return <ErrorState onRetry={() => setDemoState('normal')} />;
   }
 
-  const upcomingKT = [
-    { title: 'AWS EKS Cluster Peering Workshop', host: 'Sarah Connor', time: 'Today at 3:00 PM', attendees: 4 },
-    { title: 'Frontend Design System & Glassmorphism SOP', host: 'David Chen', time: 'Tomorrow at 11:00 AM', attendees: 3 }
-  ];
+  const upcomingKT = ktSessions
+    .filter(s => s.status === 'UPCOMING')
+    .map(s => ({
+      title: s.title,
+      host: s.hostName,
+      time: new Date(s.scheduledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
+      attendees: s.attendees,
+    }));
 
-  const completedKT = [
-    { title: 'OAuth2 Authentication Routing Flow', host: 'Elena Rostova', date: '2026-08-01', rating: '4.9/5' },
-    { title: 'Neo4j Cypher Traversal & Indexing', host: 'Alex Mercer', date: '2026-07-28', rating: '4.8/5' }
-  ];
+  const completedKT = ktSessions
+    .filter(s => s.status === 'COMPLETED')
+    .map(s => ({
+      title: s.title,
+      host: s.hostName,
+      date: new Date(s.scheduledAt).toISOString().split('T')[0],
+      rating: s.rating ? `${s.rating}/5` : 'N/A',
+    }));
 
-  const mentorAssignments = [
-    { mentee: 'Alex Mercer (Junior Dev)', mentor: 'Sarah Connor (Lead DevOps)', status: 'Active Pairing' },
-    { mentee: 'David Chen (Senior Frontend)', mentor: 'Elena Rostova (VP Platform)', status: 'Active Pairing' }
-  ];
+  const mentorAssignments = mentorPairings
+    .filter(p => p.isActive)
+    .map(p => ({
+      mentee: p.menteeName,
+      mentor: p.mentorName,
+      status: 'Active Pairing',
+    }));
 
   return (
     <div className="space-y-6 text-left animate-fade-in widescreen-container pb-12">
