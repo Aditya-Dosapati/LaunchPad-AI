@@ -18,11 +18,11 @@ import {
 import { CopilotInsightCard } from '../ui/CopilotWidgets';
 
 export const HelpCenterView: React.FC = () => {
-  const { demoState, setDemoState, role } = useApp();
+  const { demoState, setDemoState, role, feedbackEntries, submitFeedback, dataLoading } = useApp();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [feedbackInput, setFeedbackInput] = useState('');
 
-  if (demoState === 'loading') {
+  if (demoState === 'loading' || dataLoading) {
     return <TableSkeleton rows={4} />;
   }
 
@@ -30,22 +30,28 @@ export const HelpCenterView: React.FC = () => {
     return <ErrorState onRetry={() => setDemoState('normal')} />;
   }
 
-  const employeeFeedbackLog = [
-    { text: 'The mentor pairing with Sarah Connor made onboarding 10x smoother!', author: 'David Chen', type: 'Public', sentiment: 'Positive' },
-    { text: 'VPC peering setup guide needs clearer diagram steps.', author: 'Anonymous Onboarder', type: 'Anonymous', sentiment: 'Neutral' },
-    { text: 'Suggestion: Add a weekly virtual coffee chat for new joiners.', author: 'Alex Mercer', type: 'Suggestion', sentiment: 'Positive' }
-  ];
+  const employeeFeedbackLog = feedbackEntries.map(f => ({
+    text: f.text,
+    author: f.authorName,
+    type: f.type === 'PUBLIC' ? 'Public' : f.type === 'ANONYMOUS' ? 'Anonymous' : 'Suggestion',
+    sentiment: f.sentiment === 'POSITIVE' ? 'Positive' : f.sentiment === 'NEGATIVE' ? 'Negative' : 'Neutral',
+  }));
 
   const commonProblems = [
     { problem: 'VPC Peering diagram steps missing in SOP v1', count: 6, status: 'In Review' },
     { problem: 'MacBook setup script permission error on Day 1', count: 3, status: 'Resolved' }
   ];
 
-  const handleSubmitFeedback = (e: React.FormEvent) => {
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackInput.trim()) return;
-    setToastMsg('Feedback submitted. AI sentiment analysis queued.');
-    setFeedbackInput('');
+    try {
+      await submitFeedback(feedbackInput);
+      setToastMsg('Feedback submitted. AI sentiment analysis queued.');
+      setFeedbackInput('');
+    } catch (err) {
+      setToastMsg('Failed to submit feedback.');
+    }
   };
 
   return (

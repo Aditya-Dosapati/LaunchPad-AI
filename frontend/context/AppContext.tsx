@@ -1,6 +1,22 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import {
+  authApi,
+  usersApi,
+  documentsApi,
+  projectsApi,
+  notificationsApi,
+  chatsApi,
+  ktSessionsApi,
+  mentorPairingsApi,
+  feedbackApi,
+  onboardingApi,
+  setToken,
+  getToken,
+  clearToken,
+  ApiError,
+} from '../lib/api';
 
 export type UserRole = 'employee' | 'manager' | 'hr' | 'admin';
 export type DemoState = 'normal' | 'loading' | 'empty' | 'error';
@@ -90,6 +106,49 @@ export interface SystemNotification {
   read: boolean;
 }
 
+export interface KTSessionData {
+  id: string;
+  title: string;
+  hostName: string;
+  hostId: string;
+  status: string;
+  scheduledAt: string;
+  rating: number | null;
+  attendees: number;
+}
+
+export interface MentorPairingData {
+  id: string;
+  mentorName: string;
+  mentorId: string;
+  menteeName: string;
+  menteeId: string;
+  isActive: boolean;
+}
+
+export interface FeedbackData {
+  id: string;
+  text: string;
+  authorName: string;
+  authorId: string | null;
+  type: string;
+  sentiment: string;
+  createdAt: string;
+}
+
+export interface OnboardingData {
+  id: string;
+  userId: string;
+  name: string;
+  department: string;
+  progress: number;
+  trainingCompletion: number;
+  readinessScore: number;
+  pendingKT: string | null;
+  pendingDoc: string | null;
+  assignedMentorName: string | null;
+}
+
 interface AppContextType {
   theme: 'light' | 'dark';
   themeMode: 'light' | 'dark' | 'system';
@@ -113,7 +172,7 @@ interface AppContextType {
   employees: Employee[];
   updateEmployee: (id: string, emp: Partial<Employee>) => void;
   addEmployee: (emp: Omit<Employee, 'id' | 'joinedDate'>) => void;
-  
+
   projects: Project[];
   updateProject: (id: string, proj: Partial<Project>) => void;
 
@@ -130,6 +189,17 @@ interface AppContextType {
   searchChats: string;
   setSearchChats: (term: string) => void;
 
+  // Extended data from API
+  ktSessions: KTSessionData[];
+  mentorPairings: MentorPairingData[];
+  feedbackEntries: FeedbackData[];
+  onboardingTracks: OnboardingData[];
+  refreshKTSessions: () => void;
+  refreshMentorPairings: () => void;
+  refreshFeedback: () => void;
+  refreshOnboarding: () => void;
+  submitFeedback: (text: string, type?: string) => Promise<void>;
+
   // Modals & Drawers States
   isUploadModalOpen: boolean;
   setIsUploadModalOpen: (open: boolean) => void;
@@ -140,314 +210,183 @@ interface AppContextType {
   activeDocPreview: Document | null;
   setActiveDocPreview: (doc: Document | null) => void;
   
-  // User Authentication Simulation
+  // User Authentication
   currentUser: {
+    id: string;
     name: string;
     email: string;
     avatar: string;
     skills: string[];
     department: string;
+    role: string;
+    jobTitle: string;
+    bio: string;
+    phone: string;
+    location: string;
+    employeeId: string;
+    mfaEnabled: boolean;
   } | null;
   setCurrentUser: (user: any) => void;
-  loginUser: (user: any, role: UserRole) => void;
+  loginUser: (emailOrUser: any, passwordOrRole?: any) => Promise<void>;
   logout: () => void;
+  authLoading: boolean;
+  authError: string | null;
+  dataLoading: boolean;
 }
 
-const initialDocuments: Document[] = [
-  {
-    id: 'doc-1',
-    title: 'Kubernetes Cluster Deployment Guide',
-    category: 'Deployment',
-    content: 'This SOP outlines the steps to deploy a highly available Kubernetes cluster in AWS EKS. It covers VPC peering, subnets config, worker groups configuration in Terraform, and setup of CoreDNS, kube-proxy, and AWS VPC CNI. Always verify kubectl versions before starting.',
-    version: 'v2.1',
-    author: 'Sarah Connor',
-    lastUpdated: '2026-08-01',
-    status: 'Approved',
-    isBookmarked: true,
-    isFavorite: true,
-  },
-  {
-    id: 'doc-2',
-    title: 'Frontend Coding Standards & ESLint Config',
-    category: 'Coding Standards',
-    content: 'We use Next.js, Tailwind CSS, and TypeScript for all web applications. Prettier rules are enforced on commit. Class naming follows utility-first conventions with logical group order. Avoid custom utility classes unless absolutely required by design.',
-    version: 'v1.4',
-    author: 'David Chen',
-    lastUpdated: '2026-07-28',
-    status: 'Approved',
-    isFavorite: true,
-  },
-  {
-    id: 'doc-3',
-    title: 'Knowledge Graph Integration Architecture',
-    category: 'Architecture',
-    content: 'System architecture map detailing the integration of Neo4j vector database with our AI RAG pipeline. It includes node descriptions for Employees, Skills, Projects, and Documents, outlining how queries traverse document nodes to compute documentation health.',
-    version: 'v0.9-draft',
-    author: 'Alex Mercer',
-    lastUpdated: '2026-08-05',
-    status: 'Pending Review',
-  },
-  {
-    id: 'doc-4',
-    title: 'API Authentication Flow & JWT Rotation',
-    category: 'API Docs',
-    content: 'Endpoints details for JWT authentication. Contains detailed descriptions of /api/auth/login, /api/auth/refresh, and security protocols like httpOnly cookies, CORS origins list, and token expiration handling.',
-    version: 'v3.0',
-    author: 'Elena Rostova',
-    lastUpdated: '2026-08-03',
-    status: 'Approved',
-  },
-  {
-    id: 'doc-5',
-    title: 'Employee Onboarding & Access Provisioning SOP',
-    category: 'SOP',
-    content: 'Steps to provision developer machines, GitHub organization permissions, Slack channel subscriptions, Jira board access, and 1Password vault memberships.',
-    version: 'v2.0',
-    author: 'Marcus Aurelius',
-    lastUpdated: '2026-06-15',
-    status: 'Approved',
-  },
-  {
-    id: 'doc-6',
-    title: 'AI Assistant Token Usage & Rate Limits FAQ',
-    category: 'FAQ',
-    content: 'Frequently Asked Questions about AI chat quota, context window limits, prompt guidelines, and instructions on how to request a token limit increase.',
-    version: 'v1.0',
-    author: 'Sophia Patel',
-    lastUpdated: '2026-08-04',
-    status: 'Approved',
-    isBookmarked: true,
-  }
-];
+// ─────────────────────────────────────────────
+// Map API data → frontend types
+// ─────────────────────────────────────────────
 
-const initialEmployees: Employee[] = [
-  {
-    id: 'emp-1',
-    name: 'Sarah Connor',
-    email: 'sarah.c@company.io',
-    department: 'Engineering',
-    role: 'manager',
-    jobTitle: 'Lead DevOps Architect',
-    status: 'Active',
-    knowledgeScore: 94,
-    learningProgress: 88,
-    onboardingStep: 5,
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150',
-    skills: ['Kubernetes', 'AWS', 'Terraform', 'CI/CD', 'Docker', 'Python'],
-    joinedDate: '2024-03-12'
-  },
-  {
-    id: 'emp-2',
-    name: 'David Chen',
-    email: 'david.c@company.io',
-    department: 'Engineering',
-    role: 'employee',
-    jobTitle: 'Senior Frontend Engineer',
-    status: 'Active',
-    knowledgeScore: 89,
-    learningProgress: 92,
-    onboardingStep: 5,
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
-    skills: ['React', 'Next.js', 'TailwindCSS', 'TypeScript', 'Redux', 'Jest'],
-    joinedDate: '2025-01-18'
-  },
-  {
-    id: 'emp-3',
-    name: 'Emma Watson',
-    email: 'emma.w@company.io',
-    department: 'HR',
-    role: 'hr',
-    jobTitle: 'Talent Success Partner',
-    status: 'Active',
-    knowledgeScore: 82,
-    learningProgress: 75,
-    onboardingStep: 5,
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
-    skills: ['Onboarding', 'Talent Dev', 'Conflict Resolution', 'Notion'],
-    joinedDate: '2023-09-01'
-  },
-  {
-    id: 'emp-4',
-    name: 'Alex Mercer',
-    email: 'alex.m@company.io',
-    department: 'Engineering',
-    role: 'employee',
-    jobTitle: 'Junior Backend Developer',
-    status: 'Onboarding',
-    knowledgeScore: 64,
-    learningProgress: 45,
-    onboardingStep: 2,
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150',
-    skills: ['Node.js', 'Express', 'PostgreSQL', 'Git', 'Docker'],
-    joinedDate: '2026-07-15'
-  },
-  {
-    id: 'emp-5',
-    name: 'Elena Rostova',
-    email: 'elena.r@company.io',
-    department: 'Product',
-    role: 'admin',
-    jobTitle: 'VP of Platform Intelligence',
-    status: 'Active',
-    knowledgeScore: 96,
-    learningProgress: 98,
-    onboardingStep: 5,
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150',
-    skills: ['SaaS Architecture', 'GraphDB', 'Product Strategy', 'OpenAI API'],
-    joinedDate: '2022-04-10'
-  }
-];
+const mapCategoryFromApi = (cat: string): Document['category'] => {
+  const map: Record<string, Document['category']> = {
+    SOP: 'SOP', FAQ: 'FAQ', API_DOCS: 'API Docs', ARCHITECTURE: 'Architecture',
+    CODING_STANDARDS: 'Coding Standards', DEPLOYMENT: 'Deployment', GENERAL: 'General',
+  };
+  return map[cat] || 'General';
+};
 
-const initialProjects: Project[] = [
-  {
-    id: 'proj-1',
-    name: 'Knowledge RAG Pipeline v2',
-    description: 'Upgrading vector indexing engine to support real-time PDF parsing and hybrid graph queries.',
-    progress: 75,
-    health: 88,
-    teamSize: 4,
-    lead: 'Sarah Connor',
-    techStack: ['Neo4j', 'Pinecone', 'LangChain', 'Python', 'FastAPI'],
-    docStatus: {
-      architecture: 'Complete',
-      sop: 'Complete',
-      api: 'Draft'
-    }
-  },
-  {
-    id: 'proj-2',
-    name: 'Enterprise Admin Center',
-    description: 'Building custom enterprise dashboard with multi-role access control, usage metrics and logs auditing.',
-    progress: 42,
-    health: 64,
-    teamSize: 3,
-    lead: 'David Chen',
-    techStack: ['Next.js', 'Tailwind CSS', 'Radix UI', 'TypeScript'],
-    docStatus: {
-      architecture: 'Draft',
-      sop: 'Missing',
-      api: 'Draft'
-    }
-  },
-  {
-    id: 'proj-3',
-    name: 'Telemetry & Monitoring Integration',
-    description: 'Setting up OpenTelemetry collectors and PromQL/Grafana dashboards across microservices.',
-    progress: 95,
-    health: 98,
-    teamSize: 2,
-    lead: 'Sarah Connor',
-    techStack: ['Kubernetes', 'Prometheus', 'Grafana', 'Go'],
-    docStatus: {
-      architecture: 'Complete',
-      sop: 'Complete',
-      api: 'Complete'
-    }
-  }
-];
+const mapCategoryToApi = (cat: string): string => {
+  const map: Record<string, string> = {
+    'SOP': 'SOP', 'FAQ': 'FAQ', 'API Docs': 'API_DOCS', 'Architecture': 'ARCHITECTURE',
+    'Coding Standards': 'CODING_STANDARDS', 'Deployment': 'DEPLOYMENT', 'General': 'GENERAL',
+  };
+  return map[cat] || 'GENERAL';
+};
 
-const initialNotifications: SystemNotification[] = [
-  {
-    id: 'n-1',
-    type: 'question',
-    title: 'Question Answered',
-    message: 'Your question "How to deploy worker groups with Terraform?" has been answered by Sarah Connor.',
-    timestamp: '2 hours ago',
-    read: false,
-  },
-  {
-    id: 'n-2',
-    type: 'document',
-    title: 'Document Updated',
-    message: 'David Chen updated "Frontend Coding Standards" to v1.4.',
-    timestamp: '4 hours ago',
-    read: false,
-  },
-  {
-    id: 'n-3',
-    type: 'reminder',
-    title: 'Learning Reminder',
-    message: 'Your upcoming quiz "Advanced Kubernetes Concepts" is due in 2 days.',
-    timestamp: '1 day ago',
-    read: true,
-  },
-  {
-    id: 'n-4',
-    type: 'announcement',
-    title: 'HR Announcement',
-    message: 'Quarterly Knowledge Hackathon kicks off on August 15th! Sign up now.',
-    timestamp: '3 days ago',
-    read: false,
-  },
-  {
-    id: 'n-5',
-    type: 'feedback',
-    title: 'Mentor Feedback',
-    message: 'VP Elena Rostova left review comments on your draft architecture map.',
-    timestamp: '4 days ago',
-    read: true,
-  }
-];
+const mapStatusFromApi = (status: string): Document['status'] => {
+  const map: Record<string, Document['status']> = {
+    APPROVED: 'Approved', PENDING_REVIEW: 'Pending Review', DRAFT: 'Draft',
+  };
+  return map[status] || 'Draft';
+};
 
-const initialChats: ChatSession[] = [
-  {
-    id: 'chat-1',
-    title: 'Kubernetes VPC peering setup',
-    date: '2026-08-05',
-    messages: [
-      {
-        id: 'm1',
-        sender: 'user',
-        text: 'How do I set up VPC peering in our AWS EKS cluster deployment?',
-        timestamp: '11:30 AM'
-      },
-      {
-        id: 'm2',
-        sender: 'ai',
-        text: 'To peer VPCs in our environment, refer to the "Kubernetes Cluster Deployment Guide". You need to define a `aws_vpc_peering_connection` resource in Terraform and add routes targeting the peer subnet in your route tables.',
-        timestamp: '11:31 AM',
-        codeSnippet: `resource "aws_vpc_peering_connection" "k8s_peer" {
-  peer_owner_id = var.peer_owner_id
-  peer_vpc_id   = var.peer_vpc_id
-  vpc_id        = aws_vpc.k8s_vpc.id
-  auto_accept   = true
+const mapStatusToApi = (status: string): string => {
+  const map: Record<string, string> = {
+    'Approved': 'APPROVED', 'Pending Review': 'PENDING_REVIEW', 'Draft': 'DRAFT',
+  };
+  return map[status] || 'DRAFT';
+};
 
-  tags = {
-    Name = "k8s-vpc-peering"
-  }
-}`,
-        language: 'hcl',
-        sources: ['Kubernetes Cluster Deployment Guide (v2.1)', 'Infrastructure VPC Config SOP'],
-        confidence: 96
-      }
-    ]
+const mapDocCompletionFromApi = (s: string): 'Complete' | 'Draft' | 'Missing' => {
+  const map: Record<string, 'Complete' | 'Draft' | 'Missing'> = {
+    COMPLETE: 'Complete', DRAFT: 'Draft', MISSING: 'Missing',
+  };
+  return map[s] || 'Missing';
+};
+
+const mapRoleFromApi = (role: string): UserRole => {
+  const map: Record<string, UserRole> = {
+    EMPLOYEE: 'employee', MANAGER: 'manager', HR: 'hr', ADMIN: 'admin',
+  };
+  return map[role] || 'employee';
+};
+
+const mapUserStatusFromApi = (status: string): Employee['status'] => {
+  const map: Record<string, Employee['status']> = {
+    ACTIVE: 'Active', ONBOARDING: 'Onboarding', ON_LEAVE: 'On Leave', SUSPENDED: 'Suspended',
+  };
+  return map[status] || 'Active';
+};
+
+const mapDepartmentFromApi = (dept: string | null): Employee['department'] => {
+  if (!dept) return 'Engineering';
+  const map: Record<string, Employee['department']> = {
+    ENGINEERING: 'Engineering', PRODUCT: 'Product', MARKETING: 'Marketing',
+    HR: 'HR', SALES: 'Sales', OPERATIONS: 'Operations',
+  };
+  return map[dept] || 'Engineering';
+};
+
+const mapApiDocToDoc = (d: any): Document => ({
+  id: d.id,
+  title: d.title,
+  category: mapCategoryFromApi(d.category),
+  content: d.content,
+  version: d.version || 'v1.0',
+  author: d.author?.name || 'Unknown',
+  lastUpdated: d.updatedAt ? new Date(d.updatedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+  status: mapStatusFromApi(d.status),
+  isBookmarked: d.isBookmarked,
+  isFavorite: d.isFavorite,
+});
+
+const mapApiUserToEmployee = (u: any): Employee => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  department: mapDepartmentFromApi(u.department),
+  role: mapRoleFromApi(u.role),
+  jobTitle: u.jobTitle || '',
+  status: mapUserStatusFromApi(u.status),
+  knowledgeScore: 0,
+  learningProgress: 0,
+  onboardingStep: u.status === 'ONBOARDING' ? 2 : 5,
+  avatar: u.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+  skills: u.skills || [],
+  joinedDate: u.joinedAt ? new Date(u.joinedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+});
+
+const mapApiProjectToProject = (p: any): Project => ({
+  id: p.id,
+  name: p.name,
+  description: p.description,
+  progress: p.progress,
+  health: p.health,
+  teamSize: (p.members?.length || 0) + 1, // +1 for lead
+  lead: p.lead?.name || 'Unknown',
+  techStack: p.techStack || [],
+  docStatus: {
+    architecture: mapDocCompletionFromApi(p.docArchitecture),
+    sop: mapDocCompletionFromApi(p.docSop),
+    api: mapDocCompletionFromApi(p.docApi),
   },
-  {
-    id: 'chat-2',
-    title: 'Tailwind custom borders config',
-    date: '2026-08-03',
-    messages: [
-      {
-        id: 'm3',
-        sender: 'user',
-        text: 'What is the standard border class for subtle glassmorphism in our dark mode theme?',
-        timestamp: '03:15 PM'
-      },
-      {
-        id: 'm4',
-        sender: 'ai',
-        text: 'Per our "Frontend Coding Standards", subtle glassmorphic borders are styled using `border border-white/10` with `backdrop-blur-md` in dark mode, and `border border-black/5` with `backdrop-blur-md` in light mode.',
-        timestamp: '03:16 PM',
-        codeSnippet: `<div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-6">
-  <h3 className="text-white font-medium">Sleek Card</h3>
-</div>`,
-        language: 'jsx',
-        sources: ['Frontend Coding Standards & ESLint Config (v1.4)'],
-        confidence: 98
-      }
-    ]
-  }
-];
+});
+
+const mapApiChatToSession = (c: any): ChatSession => ({
+  id: c.id,
+  title: c.title || 'New Discussion',
+  date: c.updatedAt ? new Date(c.updatedAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+  messages: (c.messages || []).map((m: any) => ({
+    id: m.id,
+    sender: m.sender === 'USER' ? 'user' : 'ai',
+    text: m.text,
+    timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+    codeSnippet: m.codeSnippet || undefined,
+    language: m.language || undefined,
+    sources: m.sources?.length ? m.sources : undefined,
+    confidence: m.confidence || undefined,
+  })) as ChatMessage[],
+});
+
+const mapNotifTypeFromApi = (t: string): SystemNotification['type'] => {
+  const map: Record<string, SystemNotification['type']> = {
+    QUESTION: 'question', DOCUMENT: 'document', REMINDER: 'reminder',
+    ANNOUNCEMENT: 'announcement', FEEDBACK: 'feedback',
+  };
+  return map[t] || 'announcement';
+};
+
+const mapApiNotifToNotif = (n: any): SystemNotification => ({
+  id: n.id,
+  type: mapNotifTypeFromApi(n.type),
+  title: n.title,
+  message: n.message,
+  timestamp: n.createdAt ? formatTimeAgo(new Date(n.createdAt)) : 'just now',
+  read: n.isRead,
+});
+
+function formatTimeAgo(date: Date): string {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? 's' : ''} ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+}
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -463,14 +402,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [demoState, setDemoState] = useState<DemoState>('normal');
   const [placeholderModule, setPlaceholderModule] = useState<string>('');
   
-  // Data lists
-  const [documents, setDocuments] = useState<Document[]>(initialDocuments);
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [notifications, setNotifications] = useState<SystemNotification[]>(initialNotifications);
-  const [chats, setChats] = useState<ChatSession[]>(initialChats);
-  const [activeChatId, setActiveChatId] = useState<string>('chat-1');
+  // Data lists — now populated from API
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [chats, setChats] = useState<ChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string>('');
   const [searchChats, setSearchChats] = useState<string>('');
+
+  // Extended API data
+  const [ktSessions, setKtSessions] = useState<KTSessionData[]>([]);
+  const [mentorPairings, setMentorPairings] = useState<MentorPairingData[]>([]);
+  const [feedbackEntries, setFeedbackEntries] = useState<FeedbackData[]>([]);
+  const [onboardingTracks, setOnboardingTracks] = useState<OnboardingData[]>([]);
 
   // Modals & Drawers
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -478,41 +423,231 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeEmployeeDrawer, setActiveEmployeeDrawer] = useState<Employee | null>(null);
   const [activeDocPreview, setActiveDocPreview] = useState<Document | null>(null);
 
-  // Auth User state (Unauthenticated null state by default)
+  // Auth User state
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [dataLoading, setDataLoading] = useState(false);
 
-  // Restore session from localStorage on startup
-  useEffect(() => {
+  // Prevent duplicate data fetches
+  const dataFetchedRef = useRef(false);
+
+  // ─────────────────────────────────────────────
+  // Data fetching functions
+  // ─────────────────────────────────────────────
+
+  const fetchAllData = useCallback(async () => {
+    if (dataFetchedRef.current) return;
+    dataFetchedRef.current = true;
+    setDataLoading(true);
     try {
-      if (typeof window !== 'undefined') {
-        const savedSession = localStorage.getItem('launchpad_session');
-        if (savedSession) {
-          const parsed = JSON.parse(savedSession);
-          if (parsed?.user && parsed?.role) {
-            setCurrentUser(parsed.user);
-            setRole(parsed.role);
-            setRoute('dashboard');
-            return;
-          }
+      const [
+        docsRes,
+        usersRes,
+        projRes,
+        notifRes,
+        chatsRes,
+        ktRes,
+        mentorRes,
+        feedbackRes,
+        onboardRes,
+      ] = await Promise.allSettled([
+        documentsApi.list(),
+        usersApi.list(),
+        projectsApi.list(),
+        notificationsApi.list(),
+        chatsApi.list(),
+        ktSessionsApi.list(),
+        mentorPairingsApi.list(),
+        feedbackApi.list(),
+        onboardingApi.list(),
+      ]);
+
+      if (docsRes.status === 'fulfilled') {
+        setDocuments(docsRes.value.documents.map(mapApiDocToDoc));
+      }
+      if (usersRes.status === 'fulfilled') {
+        setEmployees(usersRes.value.users.map(mapApiUserToEmployee));
+      }
+      if (projRes.status === 'fulfilled') {
+        setProjects(projRes.value.projects.map(mapApiProjectToProject));
+      }
+      if (notifRes.status === 'fulfilled') {
+        setNotifications(notifRes.value.notifications.map(mapApiNotifToNotif));
+      }
+      if (chatsRes.status === 'fulfilled') {
+        const mappedChats = chatsRes.value.chats.map(mapApiChatToSession);
+        setChats(mappedChats);
+        if (mappedChats.length > 0) {
+          setActiveChatId(mappedChats[0].id);
         }
       }
-    } catch (e) {
-      console.error('Failed to restore auth session:', e);
+      if (ktRes.status === 'fulfilled') {
+        setKtSessions(ktRes.value.sessions.map((s: any) => ({
+          id: s.id,
+          title: s.title,
+          hostName: s.host?.name || 'Unknown',
+          hostId: s.hostId,
+          status: s.status,
+          scheduledAt: s.scheduledAt,
+          rating: s.rating,
+          attendees: s.attendances?.length || 0,
+        })));
+      }
+      if (mentorRes.status === 'fulfilled') {
+        setMentorPairings(mentorRes.value.pairings.map((p: any) => ({
+          id: p.id,
+          mentorName: p.mentor?.name || 'Unknown',
+          mentorId: p.mentorId,
+          menteeName: p.mentee?.name || 'Unknown',
+          menteeId: p.menteeId,
+          isActive: p.isActive,
+        })));
+      }
+      if (feedbackRes.status === 'fulfilled') {
+        setFeedbackEntries(feedbackRes.value.feedback.map((f: any) => ({
+          id: f.id,
+          text: f.text,
+          authorName: f.author?.name || 'Anonymous',
+          authorId: f.authorId,
+          type: f.type,
+          sentiment: f.sentiment,
+          createdAt: f.createdAt,
+        })));
+      }
+      if (onboardRes.status === 'fulfilled') {
+        setOnboardingTracks(onboardRes.value.tracks.map((t: any) => ({
+          id: t.id,
+          userId: t.userId,
+          name: t.user?.name || 'Unknown',
+          department: mapDepartmentFromApi(t.user?.department),
+          progress: t.progress,
+          trainingCompletion: t.trainingCompletion,
+          readinessScore: t.readinessScore,
+          pendingKT: t.pendingKT,
+          pendingDoc: t.pendingDoc,
+          assignedMentorName: t.assignedMentorName,
+        })));
+      }
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+    } finally {
+      setDataLoading(false);
     }
-    setCurrentUser(null);
-    setRoute('auth');
   }, []);
 
-  // Sync state between currentUser role and app selected role for convenience
+  // Individual refresh functions
+  const refreshKTSessions = useCallback(async () => {
+    try {
+      const res = await ktSessionsApi.list();
+      setKtSessions(res.sessions.map((s: any) => ({
+        id: s.id,
+        title: s.title,
+        hostName: s.host?.name || 'Unknown',
+        hostId: s.hostId,
+        status: s.status,
+        scheduledAt: s.scheduledAt,
+        rating: s.rating,
+        attendees: s.attendances?.length || 0,
+      })));
+    } catch (err) { console.error('Failed to refresh KT sessions:', err); }
+  }, []);
+
+  const refreshMentorPairings = useCallback(async () => {
+    try {
+      const res = await mentorPairingsApi.list();
+      setMentorPairings(res.pairings.map((p: any) => ({
+        id: p.id,
+        mentorName: p.mentor?.name || 'Unknown',
+        mentorId: p.mentorId,
+        menteeName: p.mentee?.name || 'Unknown',
+        menteeId: p.menteeId,
+        isActive: p.isActive,
+      })));
+    } catch (err) { console.error('Failed to refresh mentor pairings:', err); }
+  }, []);
+
+  const refreshFeedback = useCallback(async () => {
+    try {
+      const res = await feedbackApi.list();
+      setFeedbackEntries(res.feedback.map((f: any) => ({
+        id: f.id,
+        text: f.text,
+        authorName: f.author?.name || 'Anonymous',
+        authorId: f.authorId,
+        type: f.type,
+        sentiment: f.sentiment,
+        createdAt: f.createdAt,
+      })));
+    } catch (err) { console.error('Failed to refresh feedback:', err); }
+  }, []);
+
+  const refreshOnboarding = useCallback(async () => {
+    try {
+      const res = await onboardingApi.list();
+      setOnboardingTracks(res.tracks.map((t: any) => ({
+        id: t.id,
+        userId: t.userId,
+        name: t.user?.name || 'Unknown',
+        department: mapDepartmentFromApi(t.user?.department),
+        progress: t.progress,
+        trainingCompletion: t.trainingCompletion,
+        readinessScore: t.readinessScore,
+        pendingKT: t.pendingKT,
+        pendingDoc: t.pendingDoc,
+        assignedMentorName: t.assignedMentorName,
+      })));
+    } catch (err) { console.error('Failed to refresh onboarding:', err); }
+  }, []);
+
+  // ─────────────────────────────────────────────
+  // Auth: Restore session on mount
+  // ─────────────────────────────────────────────
+
   useEffect(() => {
-    if (currentUser) {
-      // Find matching employee to sync metadata
-      const matched = employees.find(e => e.email === currentUser.email);
-      if (matched) {
-        setEmployees(prev => prev.map(e => e.id === matched.id ? { ...e, role } : e));
+    const restoreSession = async () => {
+      const token = getToken();
+      if (!token) {
+        setCurrentUser(null);
+        setRoute('auth');
+        return;
       }
-    }
-  }, [role]);
+      try {
+        const { user } = await authApi.me();
+        const mapped = {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+          skills: user.skills || [],
+          department: mapDepartmentFromApi(user.department),
+          role: user.role,
+          jobTitle: user.jobTitle || '',
+          bio: user.bio || '',
+          phone: user.phone || '',
+          location: user.location || '',
+          employeeId: user.employeeId || '',
+          mfaEnabled: user.mfaEnabled || false,
+        };
+        setCurrentUser(mapped);
+        setRole(mapRoleFromApi(user.role));
+        setRoute('dashboard');
+        // Fetch data after auth restored
+        dataFetchedRef.current = false;
+        fetchAllData();
+      } catch (err) {
+        console.error('Session restore failed:', err);
+        clearToken();
+        setCurrentUser(null);
+        setRoute('auth');
+      }
+    };
+    restoreSession();
+  }, [fetchAllData]);
+
+  // ─────────────────────────────────────────────
+  // Theme
+  // ─────────────────────────────────────────────
 
   // Resolve a themeMode to an actual 'light' | 'dark' value
   const resolveTheme = (mode: 'light' | 'dark' | 'system'): 'light' | 'dark' => {
@@ -591,69 +726,164 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [theme]);
 
-  // Document Operations
-  const addDocument = (doc: Omit<Document, 'id' | 'lastUpdated' | 'version'>) => {
-    const newDoc: Document = {
-      ...doc,
-      id: `doc-${Date.now()}`,
-      lastUpdated: new Date().toISOString().split('T')[0],
-      version: 'v1.0'
-    };
-    setDocuments(prev => [newDoc, ...prev]);
+  // ─────────────────────────────────────────────
+  // Document Operations (API-backed)
+  // ─────────────────────────────────────────────
+
+  const addDocument = async (doc: Omit<Document, 'id' | 'lastUpdated' | 'version'>) => {
+    try {
+      const res = await documentsApi.create({
+        title: doc.title,
+        content: doc.content,
+        category: mapCategoryToApi(doc.category),
+        status: mapStatusToApi(doc.status),
+      });
+      setDocuments(prev => [mapApiDocToDoc(res.document), ...prev]);
+    } catch (err) {
+      console.error('Failed to create document:', err);
+      // Optimistic fallback
+      const newDoc: Document = {
+        ...doc,
+        id: `doc-${Date.now()}`,
+        lastUpdated: new Date().toISOString().split('T')[0],
+        version: 'v1.0'
+      };
+      setDocuments(prev => [newDoc, ...prev]);
+    }
   };
 
-  const updateDocument = (id: string, updatedFields: Partial<Document>) => {
+  const updateDocument = async (id: string, updatedFields: Partial<Document>) => {
+    // Optimistic update
     setDocuments(prev =>
       prev.map(doc => (doc.id === id ? { ...doc, ...updatedFields, lastUpdated: new Date().toISOString().split('T')[0] } : doc))
     );
+    try {
+      const apiData: any = {};
+      if (updatedFields.title !== undefined) apiData.title = updatedFields.title;
+      if (updatedFields.content !== undefined) apiData.content = updatedFields.content;
+      if (updatedFields.category !== undefined) apiData.category = mapCategoryToApi(updatedFields.category);
+      if (updatedFields.status !== undefined) apiData.status = mapStatusToApi(updatedFields.status);
+      if (updatedFields.isBookmarked !== undefined) apiData.isBookmarked = updatedFields.isBookmarked;
+      if (updatedFields.isFavorite !== undefined) apiData.isFavorite = updatedFields.isFavorite;
+      if (updatedFields.version !== undefined) apiData.version = updatedFields.version;
+      await documentsApi.update(id, apiData);
+    } catch (err) {
+      console.error('Failed to update document:', err);
+    }
   };
 
-  const deleteDocument = (id: string) => {
+  const deleteDocument = async (id: string) => {
     setDocuments(prev => prev.filter(doc => doc.id !== id));
+    try {
+      await documentsApi.delete(id);
+    } catch (err) {
+      console.error('Failed to delete document:', err);
+    }
   };
 
-  // Employee Operations
-  const updateEmployee = (id: string, updatedFields: Partial<Employee>) => {
+  // ─────────────────────────────────────────────
+  // Employee Operations (API-backed)
+  // ─────────────────────────────────────────────
+
+  const updateEmployee = async (id: string, updatedFields: Partial<Employee>) => {
     setEmployees(prev => prev.map(emp => (emp.id === id ? { ...emp, ...updatedFields } : emp)));
+    try {
+      const apiData: any = {};
+      if (updatedFields.name !== undefined) apiData.name = updatedFields.name;
+      if (updatedFields.jobTitle !== undefined) apiData.jobTitle = updatedFields.jobTitle;
+      if (updatedFields.skills !== undefined) apiData.skills = updatedFields.skills;
+      await usersApi.update(id, apiData);
+    } catch (err) {
+      console.error('Failed to update employee:', err);
+    }
   };
 
-  const addEmployee = (emp: Omit<Employee, 'id' | 'joinedDate'>) => {
-    const newEmp: Employee = {
-      ...emp,
-      id: `emp-${Date.now()}`,
-      joinedDate: new Date().toISOString().split('T')[0]
-    };
-    setEmployees(prev => [...prev, newEmp]);
+  const addEmployee = async (emp: Omit<Employee, 'id' | 'joinedDate'>) => {
+    try {
+      const res = await usersApi.create({
+        email: emp.email,
+        name: emp.name,
+        role: emp.role.toUpperCase(),
+        department: emp.department.toUpperCase(),
+        jobTitle: emp.jobTitle,
+        skills: emp.skills,
+        status: emp.status.toUpperCase().replace(' ', '_'),
+      });
+      setEmployees(prev => [...prev, mapApiUserToEmployee(res.user)]);
+    } catch (err) {
+      console.error('Failed to add employee:', err);
+      // Optimistic fallback
+      const newEmp: Employee = {
+        ...emp,
+        id: `emp-${Date.now()}`,
+        joinedDate: new Date().toISOString().split('T')[0]
+      };
+      setEmployees(prev => [...prev, newEmp]);
+    }
   };
 
-  // Project Operations
-  const updateProject = (id: string, updatedFields: Partial<Project>) => {
+  // ─────────────────────────────────────────────
+  // Project Operations (API-backed)
+  // ─────────────────────────────────────────────
+
+  const updateProject = async (id: string, updatedFields: Partial<Project>) => {
     setProjects(prev => prev.map(proj => (proj.id === id ? { ...proj, ...updatedFields } : proj)));
+    try {
+      const apiData: any = {};
+      if (updatedFields.name !== undefined) apiData.name = updatedFields.name;
+      if (updatedFields.description !== undefined) apiData.description = updatedFields.description;
+      if (updatedFields.progress !== undefined) apiData.progress = updatedFields.progress;
+      if (updatedFields.health !== undefined) apiData.health = updatedFields.health;
+      if (updatedFields.techStack !== undefined) apiData.techStack = updatedFields.techStack;
+      await projectsApi.update(id, apiData);
+    } catch (err) {
+      console.error('Failed to update project:', err);
+    }
   };
 
-  // Notifications Operations
-  const markNotificationRead = (id: string) => {
+  // ─────────────────────────────────────────────
+  // Notifications Operations (API-backed)
+  // ─────────────────────────────────────────────
+
+  const markNotificationRead = async (id: string) => {
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, read: true } : n)));
+    try {
+      await notificationsApi.markRead(id);
+    } catch (err) {
+      console.error('Failed to mark notification read:', err);
+    }
   };
 
-  const markAllNotificationsRead = () => {
+  const markAllNotificationsRead = async () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    try {
+      await notificationsApi.markAllRead();
+    } catch (err) {
+      console.error('Failed to mark all notifications read:', err);
+    }
   };
 
-  // Chat Operations
-  const createNewChat = () => {
-    const newChatId = `chat-${Date.now()}`;
-    const newChat: ChatSession = {
-      id: newChatId,
-      title: 'New Discussion',
-      date: new Date().toISOString().split('T')[0],
-      messages: []
-    };
-    setChats(prev => [newChat, ...prev]);
-    setActiveChatId(newChatId);
+  // ─────────────────────────────────────────────
+  // Chat Operations (API-backed)
+  // ─────────────────────────────────────────────
+
+  const createNewChat = async () => {
+    try {
+      const res = await chatsApi.create({});
+      const mapped = mapApiChatToSession(res.chat);
+      setChats(prev => [mapped, ...prev]);
+      setActiveChatId(mapped.id);
+    } catch (err) {
+      console.error('Failed to create chat:', err);
+      // Fallback
+      const newChatId = `chat-${Date.now()}`;
+      const newChat: ChatSession = { id: newChatId, title: 'New Discussion', date: new Date().toISOString().split('T')[0], messages: [] };
+      setChats(prev => [newChat, ...prev]);
+      setActiveChatId(newChatId);
+    }
   };
 
-  const deleteChat = (id: string) => {
+  const deleteChat = async (id: string) => {
     setChats(prev => prev.filter(c => c.id !== id));
     if (activeChatId === id) {
       const remaining = chats.filter(c => c.id !== id);
@@ -661,14 +891,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveChatId(remaining[0].id);
       }
     }
+    try {
+      await chatsApi.delete(id);
+    } catch (err) {
+      console.error('Failed to delete chat:', err);
+    }
   };
 
-  const addChatMessage = (text: string) => {
-    // Standard questions responses helper for demo experience
+  const addChatMessage = async (text: string) => {
+    if (!activeChatId) return;
+
+    // Generate AI response (same demo logic as before)
     let aiResponse = "I couldn't find a direct answer in the knowledge base. Let me check the documentation health score of the active projects.";
-    let snippet = undefined;
+    let snippet: string | undefined = undefined;
     let confidence = 45;
-    let sources = [] as string[];
+    let sources: string[] = [];
 
     const lowerText = text.toLowerCase();
     if (lowerText.includes('peering') || lowerText.includes('k8s') || lowerText.includes('vpc')) {
@@ -696,52 +933,141 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       sources = ['AI Assistant Token Usage & Rate Limits FAQ (v1.0)'];
     }
 
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     const newUserMsg: ChatMessage = {
       id: `msg-${Date.now()}-u`,
       sender: 'user',
       text,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: nowTime,
     };
-
     const newAiMsg: ChatMessage = {
       id: `msg-${Date.now()}-ai`,
       sender: 'ai',
       text: aiResponse,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: nowTime,
       codeSnippet: snippet,
       language: snippet ? (lowerText.includes('peer') ? 'hcl' : 'json') : undefined,
       confidence,
-      sources
+      sources,
     };
 
+    // Optimistic update
     setChats(prev =>
       prev.map(c => {
         if (c.id === activeChatId) {
           const updatedMsgs = [...c.messages, newUserMsg, newAiMsg];
-          // Title auto-generator based on first user query
           const title = c.messages.length === 0 ? text.substring(0, 30) + (text.length > 30 ? '...' : '') : c.title;
           return { ...c, title, messages: updatedMsgs };
         }
         return c;
       })
     );
+
+    // Post to API in background
+    try {
+      await chatsApi.addMessage(activeChatId, { sender: 'USER', text });
+      await chatsApi.addMessage(activeChatId, {
+        sender: 'AI',
+        text: aiResponse,
+        codeSnippet: snippet,
+        language: snippet ? (lowerText.includes('peer') ? 'hcl' : 'json') : undefined,
+        sources,
+        confidence,
+      });
+      // Update chat title if it was first message
+      const chat = chats.find(c => c.id === activeChatId);
+      if (chat && chat.messages.length === 0) {
+        await chatsApi.update(activeChatId, { title: text.substring(0, 30) + (text.length > 30 ? '...' : '') });
+      }
+    } catch (err) {
+      console.error('Failed to save chat messages:', err);
+    }
   };
 
-  const loginUser = (user: any, userRole: UserRole) => {
-    setCurrentUser(user);
-    setRole(userRole);
+  // ─────────────────────────────────────────────
+  // Feedback submit
+  // ─────────────────────────────────────────────
+
+  const submitFeedback = async (text: string, type?: string) => {
     try {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('launchpad_session', JSON.stringify({ user, role: userRole }));
-      }
-    } catch (e) {
-      console.error('Failed to save session:', e);
+      await feedbackApi.create({ text, type: type || 'PUBLIC' });
+      await refreshFeedback();
+    } catch (err) {
+      console.error('Failed to submit feedback:', err);
     }
-    setRoute('dashboard');
+  };
+
+  // ─────────────────────────────────────────────
+  // Auth Operations
+  // ─────────────────────────────────────────────
+
+  const loginUser = async (emailOrUser: any, passwordOrRole?: any) => {
+    // If called with email string + password string → real API login
+    if (typeof emailOrUser === 'string' && typeof passwordOrRole === 'string') {
+      setAuthLoading(true);
+      setAuthError(null);
+      try {
+        const { token, user } = await authApi.login(emailOrUser, passwordOrRole);
+        setToken(token);
+        const mapped = {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatar: user.avatarUrl || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150',
+          skills: user.skills || [],
+          department: mapDepartmentFromApi(user.department),
+          role: user.role,
+          jobTitle: user.jobTitle || '',
+          bio: user.bio || '',
+          phone: user.phone || '',
+          location: user.location || '',
+          employeeId: user.employeeId || '',
+          mfaEnabled: user.mfaEnabled || false,
+        };
+        setCurrentUser(mapped);
+        setRole(mapRoleFromApi(user.role));
+        setRoute('dashboard');
+        // Fetch all data
+        dataFetchedRef.current = false;
+        fetchAllData();
+      } catch (err) {
+        const msg = err instanceof ApiError ? err.message : 'Login failed';
+        setAuthError(msg);
+        throw err;
+      } finally {
+        setAuthLoading(false);
+      }
+    } else {
+      // Legacy: called with user object + role (for SSO simulation)
+      const user = emailOrUser;
+      const userRole = passwordOrRole as UserRole;
+      setCurrentUser(user);
+      setRole(userRole);
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('launchpad_session', JSON.stringify({ user, role: userRole }));
+        }
+      } catch (e) {
+        console.error('Failed to save session:', e);
+      }
+      setRoute('dashboard');
+    }
   };
 
   const logout = () => {
     setCurrentUser(null);
+    clearToken();
+    dataFetchedRef.current = false;
+    setDocuments([]);
+    setEmployees([]);
+    setProjects([]);
+    setNotifications([]);
+    setChats([]);
+    setKtSessions([]);
+    setMentorPairings([]);
+    setFeedbackEntries([]);
+    setOnboardingTracks([]);
     try {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('launchpad_session');
@@ -793,6 +1119,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         searchChats,
         setSearchChats,
 
+        ktSessions,
+        mentorPairings,
+        feedbackEntries,
+        onboardingTracks,
+        refreshKTSessions,
+        refreshMentorPairings,
+        refreshFeedback,
+        refreshOnboarding,
+        submitFeedback,
+
         isUploadModalOpen,
         setIsUploadModalOpen,
         isTicketModalOpen,
@@ -805,7 +1141,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentUser,
         setCurrentUser,
         loginUser,
-        logout
+        logout,
+        authLoading,
+        authError,
+        dataLoading,
       }}
     >
       {children}

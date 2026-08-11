@@ -3,8 +3,11 @@ import { body, param, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser, sanitizeUsers, parsePagination } from '../lib/queryHelpers';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/kt-sessions
 router.get(

@@ -3,21 +3,19 @@ import { body, param, query, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { parsePagination } from '../lib/queryHelpers';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// All chat routes require authentication
+router.use(requireAuth);
 
 // GET /api/chats?userId=...
 router.get(
   '/',
-  [query('userId').isUUID().withMessage('userId query param (UUID) is required')],
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
-    }
-
     const { skip, take } = parsePagination(req.query);
-    const userId = req.query.userId as string;
+    const userId = (req.query.userId as string) || req.user!.id;
     const search = req.query.search as string;
 
     const where: any = { userId };
@@ -71,7 +69,6 @@ router.get(
 router.post(
   '/',
   [
-    body('userId').isUUID().withMessage('Valid userId is required'),
     body('title').optional().isString(),
   ],
   asyncHandler(async (req, res) => {
@@ -80,7 +77,8 @@ router.post(
       return res.status(400).json({ error: 'Validation failed', details: errors.array() });
     }
 
-    const { userId, title } = req.body;
+    const userId = req.body.userId || req.user!.id;
+    const { title } = req.body;
 
     const chat = await prisma.chatSession.create({
       data: {

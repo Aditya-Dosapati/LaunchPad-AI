@@ -3,23 +3,22 @@ import { body, param, query, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { parsePagination } from '../lib/queryHelpers';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// All notification routes require authentication
+router.use(requireAuth);
 
 // ──────────────────────────────────────────
 // GET /api/notifications?userId=...
 // ──────────────────────────────────────────
 router.get(
   '/',
-  [query('userId').isUUID().withMessage('userId query param (UUID) is required')],
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
-    }
-
     const { skip, take } = parsePagination(req.query);
-    const userId = req.query.userId as string;
+    // Use authenticated user's ID if userId not provided
+    const userId = (req.query.userId as string) || req.user!.id;
     const isRead = req.query.isRead;
 
     const where: any = { userId };
@@ -45,7 +44,6 @@ router.get(
 router.post(
   '/',
   [
-    body('userId').isUUID().withMessage('Valid userId is required'),
     body('type').notEmpty().withMessage('Type is required'),
     body('title').notEmpty().withMessage('Title is required'),
     body('message').notEmpty().withMessage('Message is required'),
@@ -56,7 +54,9 @@ router.post(
       return res.status(400).json({ error: 'Validation failed', details: errors.array() });
     }
 
-    const { userId, type, title, message } = req.body;
+    const { type, title, message } = req.body;
+    const userId = req.body.userId || req.user!.id;
+
     const notification = await prisma.notification.create({
       data: { userId, type, title, message },
     });
@@ -91,14 +91,8 @@ router.patch(
 // ──────────────────────────────────────────
 router.patch(
   '/read-all',
-  [query('userId').isUUID().withMessage('userId query param (UUID) is required')],
   asyncHandler(async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
-    }
-
-    const userId = req.query.userId as string;
+    const userId = (req.query.userId as string) || req.user!.id;
 
     const result = await prisma.notification.updateMany({
       where: { userId, isRead: false },

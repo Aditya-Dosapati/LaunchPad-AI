@@ -3,8 +3,12 @@ import { body, param, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser, sanitizeUsers, parsePagination } from '../lib/queryHelpers';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// All document routes require authentication
+router.use(requireAuth);
 
 // GET /api/documents
 router.get(
@@ -65,7 +69,6 @@ router.post(
     body('title').notEmpty().withMessage('Title is required'),
     body('content').notEmpty().withMessage('Content is required'),
     body('category').notEmpty().withMessage('Category is required'),
-    body('authorId').isUUID().withMessage('Valid authorId is required'),
   ],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);
@@ -73,7 +76,9 @@ router.post(
       return res.status(400).json({ error: 'Validation failed', details: errors.array() });
     }
 
-    const { title, content, category, authorId, status, version } = req.body;
+    const { title, content, category, status, version } = req.body;
+    // Use authenticated user as author if authorId not provided
+    const authorId = req.body.authorId || req.user!.id;
 
     const document = await prisma.document.create({
       data: { title, content, category, authorId, status, version },

@@ -3,8 +3,11 @@ import { body, param, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser, sanitizeUsers, parsePagination } from '../lib/queryHelpers';
+import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+router.use(requireAuth);
 
 // GET /api/feedback
 router.get(
@@ -67,12 +70,13 @@ router.post(
       return res.status(400).json({ error: 'Validation failed', details: errors.array() });
     }
 
-    const { text, authorId, type, sentiment } = req.body;
+    const { text, type, sentiment } = req.body;
+    const authorId = type === 'ANONYMOUS' ? null : (req.body.authorId || req.user!.id);
 
     const entry = await prisma.feedbackEntry.create({
       data: {
         text,
-        authorId: type === 'ANONYMOUS' ? null : authorId,
+        authorId,
         type: type || 'PUBLIC',
         sentiment: sentiment || 'NEUTRAL',
       },

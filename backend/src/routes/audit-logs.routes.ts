@@ -3,8 +3,13 @@ import { body, param, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser, sanitizeUsers, parsePagination } from '../lib/queryHelpers';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
+
+// Audit logs require auth + ADMIN role
+router.use(requireAuth);
+router.use(requireRole('ADMIN'));
 
 // GET /api/audit-logs
 router.get(

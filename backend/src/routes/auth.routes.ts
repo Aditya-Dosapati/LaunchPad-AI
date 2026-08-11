@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser } from '../lib/queryHelpers';
+import { signToken, requireAuth } from '../middleware/auth';
 
 const router = Router();
 
@@ -32,7 +33,9 @@ router.post(
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    res.json({ user: sanitizeUser(user) });
+    const token = signToken({ id: user.id, email: user.email, role: user.role });
+
+    res.json({ token, user: sanitizeUser(user) });
   })
 );
 
@@ -63,19 +66,19 @@ router.post(
       data: { email, name, passwordHash, role },
     });
 
-    res.status(201).json({ user: sanitizeUser(user) });
+    const token = signToken({ id: user.id, email: user.email, role: user.role });
+
+    res.status(201).json({ token, user: sanitizeUser(user) });
   })
 );
 
-// GET /api/auth/me?email=...
+// GET /api/auth/me — requires valid JWT
 router.get(
   '/me',
+  requireAuth,
   asyncHandler(async (req, res) => {
-    const email = req.query.email as string;
-    if (!email) return res.status(400).json({ error: 'email query param required' });
-
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { id: req.user!.id },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
 

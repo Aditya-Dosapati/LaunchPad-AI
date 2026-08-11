@@ -3,8 +3,12 @@ import { body, param, validationResult } from 'express-validator';
 import prisma from '../lib/prisma';
 import { asyncHandler } from '../middleware/errorHandler';
 import { sanitizeUser, sanitizeUsers, parsePagination } from '../lib/queryHelpers';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
+
+// All user routes require authentication
+router.use(requireAuth);
 
 // GET /api/users
 router.get(
@@ -60,9 +64,10 @@ router.get(
   })
 );
 
-// POST /api/users
+// POST /api/users — ADMIN or HR only
 router.post(
   '/',
+  requireRole('ADMIN', 'HR'),
   [
     body('email').isEmail().withMessage('Valid email is required'),
     body('name').notEmpty().withMessage('Name is required'),
@@ -112,9 +117,10 @@ router.patch(
   })
 );
 
-// DELETE /api/users/:id
+// DELETE /api/users/:id — ADMIN only
 router.delete(
   '/:id',
+  requireRole('ADMIN'),
   [param('id').isUUID().withMessage('Invalid user ID')],
   asyncHandler(async (req, res) => {
     const errors = validationResult(req);

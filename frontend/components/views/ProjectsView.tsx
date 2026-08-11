@@ -29,10 +29,10 @@ interface HROnboardingTrack {
 }
 
 export const ProjectsView: React.FC = () => {
-  const { demoState, setDemoState, setRoute, role } = useApp();
+  const { demoState, setDemoState, setRoute, role, onboardingTracks: apiTracks, dataLoading } = useApp();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  if (demoState === 'loading') {
+  if (demoState === 'loading' || dataLoading) {
     return <TableSkeleton rows={4} />;
   }
 
@@ -40,41 +40,17 @@ export const ProjectsView: React.FC = () => {
     return <ErrorState onRetry={() => setDemoState('normal')} />;
   }
 
-  const onboardingTracks: HROnboardingTrack[] = [
-    {
-      id: 'ot-1',
-      name: 'Alex Mercer',
-      department: 'Engineering',
-      currentProgress: 45,
-      assignedMentor: 'Sarah Connor',
-      pendingKT: 'AWS EKS Cluster Peering Workshop',
-      pendingDoc: 'OAuth Security Keys SOP',
-      trainingCompletion: 50,
-      readinessScore: 64
-    },
-    {
-      id: 'ot-2',
-      name: 'David Chen',
-      department: 'Engineering',
-      currentProgress: 100,
-      assignedMentor: 'Sarah Connor',
-      pendingKT: 'None (Completed)',
-      pendingDoc: 'None (All Approved)',
-      trainingCompletion: 100,
-      readinessScore: 92
-    },
-    {
-      id: 'ot-3',
-      name: 'Emma Watson',
-      department: 'HR',
-      currentProgress: 100,
-      assignedMentor: 'Elena Rostova',
-      pendingKT: 'None (Completed)',
-      pendingDoc: 'None (All Approved)',
-      trainingCompletion: 90,
-      readinessScore: 89
-    }
-  ];
+  const onboardingTracks: HROnboardingTrack[] = apiTracks.map(t => ({
+    id: t.id,
+    name: t.name,
+    department: t.department,
+    currentProgress: t.progress,
+    assignedMentor: t.assignedMentorName || 'Not Assigned',
+    pendingKT: t.pendingKT || 'None',
+    pendingDoc: t.pendingDoc || 'None',
+    trainingCompletion: t.trainingCompletion,
+    readinessScore: t.readinessScore,
+  }));
 
   return (
     <div className="space-y-6 text-left animate-fade-in widescreen-container pb-12">
